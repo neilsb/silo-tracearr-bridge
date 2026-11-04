@@ -21,9 +21,11 @@ Jellyfin listener is not required.
 
 ## Quick start (Docker)
 
-1. Create an **administrator-owned Silo API key** with these scopes:
-   - `admin:monitor:read`
-   - `libraries:read`
+1. Create an **administrator-owned Silo API key** under Silo's admin settings.
+   If your version offers scope selection, select `admin:monitor:read` and
+   `libraries:read`. If it offers no scope selection, use the regular admin key:
+   Silo treats unscoped keys as having their owning account's full access, and
+   the bridge accepts them too.
 2. Copy the example settings:
 
    ```sh
@@ -74,7 +76,7 @@ also install with `python3 -m pip install .` and use `silo-tracearr-bridge`.
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `SILO_URL` | Native Silo API base URL, optionally with reverse-proxy base path | required |
-| `SILO_API_KEY` | Admin-owned Silo key with the two scopes above | required |
+| `SILO_API_KEY` | Admin-owned Silo key; unscoped or with the two scopes above | required |
 | `BRIDGE_API_KEY` | Separate token used only by Tracearr | required |
 | `BRIDGE_HOST` | Listen address (keep `0.0.0.0` in Docker) | `0.0.0.0` |
 | `BRIDGE_PORT` | Listen/published port | `8097` |
@@ -115,8 +117,9 @@ It targets Silo's current v2 monitoring endpoints, which older releases may lack
 - `GET /health/live`: public process liveness; used by Docker's health check.
 - `GET /health/ready`: authenticated upstream identity, scope, and capability
   checks. `--check` also exercises live-session mapping and user/library reads.
-- **Silo HTTP 401/403:** verify the upstream key is administrator-owned and has
-  both scopes. Tracearr needs the *bridge* key, not the upstream key.
+- **Silo HTTP 401/403:** verify the upstream key is administrator-owned. If it
+  has explicit scopes, it needs both scopes above; an unscoped admin key also
+  works. Tracearr needs the *bridge* key, not the upstream key.
 - **Silo HTTP 404:** check the native API port/base URL and whether the installed
   Silo version exposes `/api/v2/admin/sessions/capabilities` and
   `/api/v2/admin/catalog/capabilities`.
