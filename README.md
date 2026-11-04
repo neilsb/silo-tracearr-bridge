@@ -1,6 +1,6 @@
 # Silo–Tracearr bridge
 
-A standalone, read-only service that presents Silo's native monitoring API as
+A standalone service that presents Silo's native monitoring API as
 the Jellyfin API consumed by Tracearr. Written in Python 3.12+, with no runtime
 dependencies. This is an independent integration, not an official Silo plugin.
 
@@ -16,6 +16,8 @@ dependencies. This is an independent integration, not an official Silo plugin.
 - Keep stable server, account, media, and file IDs across bridge restarts.
 - Show currently playing posters through an authenticated Jellyfin image route,
   using the signed artwork URL supplied by Silo.
+- Terminate streams from Tracearr by revoking the native Silo session's playback
+  authority, with the termination reason delivered when the player supports it.
 
 Tracearr records history from the sessions it observes. It controls the polling
 interval; the bridge reads Silo on each `/Sessions` request. Silo's built-in
@@ -28,6 +30,8 @@ Jellyfin listener is not required.
    `libraries:read`. If it offers no scope selection, use the regular admin key:
    Silo treats unscoped keys as having their owning account's full access, and
    the bridge accepts them too.
+   For **Terminate Stream**, scoped keys also need `admin:sessions:control`.
+   Unscoped admin keys already have this access.
 2. Copy the example settings:
 
    ```sh
@@ -78,7 +82,7 @@ also install with `python3 -m pip install .` and use `silo-tracearr-bridge`.
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `SILO_URL` | Native Silo API base URL, optionally with reverse-proxy base path | required |
-| `SILO_API_KEY` | Admin-owned Silo key; unscoped or with the two scopes above | required |
+| `SILO_API_KEY` | Admin-owned Silo key; unscoped or with the monitoring scopes above, plus `admin:sessions:control` for termination | required |
 | `BRIDGE_API_KEY` | Separate token used only by Tracearr | required |
 | `BRIDGE_HOST` | Listen address (keep `0.0.0.0` in Docker) | `0.0.0.0` |
 | `BRIDGE_PORT` | Listen/published port | `8097` |
@@ -97,8 +101,9 @@ It targets Silo's current v2 monitoring endpoints, which older releases may lack
   inventing a new device for every session.
 - **Polling only:** no Tracearr SSE endpoint, CPU/RAM charts, or library push
   events. Tracearr's optional SSE probe receives 404 and can use polling.
-- **Read-only:** no stream termination, messaging, account changes, media
-  playback, or member sign-in. Control support is advertised as false.
+- **Termination only:** no pause/resume, general-purpose messaging, account
+  changes, media playback, or member sign-in. Control support is advertised only
+  when Silo's command capabilities include authority-revoking termination.
 - **Playback artwork only:** posters are discovered from active sessions. Only
   same-origin native Silo artwork URLs are supported; external artwork/CDN URLs
   are omitted. The last 16 fetched images are cached in memory (up to 8 MiB each),
@@ -144,6 +149,28 @@ It targets Silo's current v2 monitoring endpoints, which older releases may lack
   Silo defaults to trusting private networks and loopback, not public proxy IPs.
   Preserve the existing trusted hops when adding a proxy, and start a new
   playback session afterward to verify the newly recorded address.
+
+## Terminate Stream
+
+Tracearr checks the Jellyfin session's control flags and then sends
+`POST /Sessions/{id}/Playing/Stop`. The bridge translates this to
+`POST /api/v2/admin/sessions/{id}/terminate`. Success requires Silo to confirm
+`authority_revoked: true` and `durable_state: stopped` for that session.
+
+This works even without a player's realtime control connection: Silo rejects
+further media-token use and progress writes. It attempts to notify the player,
+but already-buffered media may play briefly afterward. A missing notification
+is not a termination failure when Silo confirms revocation.
+
+Tracearr sends its optional termination reason in a preceding Jellyfin `Message`
+request. The bridge acknowledges it as queued (202), retains it for up to 60
+seconds, and includes it in the termination request. It does not display that
+message separately. At most 256 pending reasons are held in memory.
+
+The server capability probe cannot establish whether a scoped credential has
+write permission. If the button fails with 403, add `admin:sessions:control` to
+the upstream key or use an unscoped administrator key. Upstream failures and
+unconfirmed revocations never return successful termination responses.
 
 The bridge accepts Jellyfin `Authorization: MediaBrowser ... Token="..."`,
 legacy `X-Emby-Authorization`/`X-Emby-Token`, and API-key query parameters.

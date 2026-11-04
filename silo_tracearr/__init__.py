@@ -1,3 +1,3 @@
-"""Read-only Silo to Tracearr compatibility bridge."""
+"""Silo to Tracearr monitoring and stream-termination bridge."""
 
 __version__ = "0.1.0"

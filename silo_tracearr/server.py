@@ -53,21 +53,40 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):
+    def handle_api(self, *, write=False):
         try:
             target = urlsplit(self.path)
             path = target.path
             if len(self.path) > 16384:
                 raise APIError(414, "Request target too long")
             query = {key.lower(): value for key, value in parse_qsl(target.query, max_num_fields=100)}
-            if path.lower().rstrip("/") not in ("/health/live", "/system/info/public"):
+            if write or path.lower().rstrip("/") not in ("/health/live", "/system/info/public"):
                 token = request_token(self.headers, query)
                 if not hmac.compare_digest(token.encode(), self.server.bridge.config.bridge_api_key.encode()):
                     raise APIError(401, "Invalid bridge API key")
             query.pop("api_key", None)
             query.pop("apikey", None)
-            data = self.server.bridge.get(path, query)
-            self.reply(200, data)
+            if write:
+                if self.headers.get("Transfer-Encoding"):
+                    raise APIError(400, "Chunked request bodies are not supported")
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    raise APIError(400, "Invalid Content-Length") from None
+                if not 0 <= length <= 16384:
+                    raise APIError(413, "Request body exceeds 16 KiB")
+                if length and self.headers.get_content_type() != "application/json":
+                    raise APIError(415, "Expected application/json")
+                try:
+                    body = json.loads(self.rfile.read(length)) if length else {}
+                except (ValueError, UnicodeError):
+                    raise APIError(400, "Invalid JSON body") from None
+                if not isinstance(body, dict):
+                    raise APIError(400, "Expected a JSON object")
+                data = self.server.bridge.post(path, body)
+            else:
+                data = self.server.bridge.get(path, query)
+            self.reply(202 if write and data.get("queued") else 200, data)
         except APIError as error:
             self.reply(error.status, {"error": str(error)})
         except UpstreamError as error:
@@ -79,12 +98,17 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
 
-    def do_POST(self):
-        self.reply(405, {"error": "This bridge is read-only"})
+    def do_GET(self):
+        self.handle_api()
 
-    do_PUT = do_POST
-    do_DELETE = do_POST
-    do_PATCH = do_POST
+    def do_POST(self):
+        self.handle_api(write=True)
+
+    def do_PUT(self):
+        self.reply(405, {"error": "Method not supported"})
+
+    do_DELETE = do_PUT
+    do_PATCH = do_PUT
 
 
 def make_server(config):

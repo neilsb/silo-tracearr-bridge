@@ -1,4 +1,4 @@
-"""Bounded read-only client for Silo's native v2 API."""
+"""Bounded client for Silo's native v2 API."""
 
 import json
 import time
@@ -9,6 +9,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 class UpstreamError(Exception):
     """Safe to expose: never contains credentials, response bodies, or URLs."""
+
+    def __init__(self, message, status=None):
+        self.status = status
+        super().__init__(message)
 
 
 class NoRedirects(HTTPRedirectHandler):
@@ -21,15 +25,25 @@ class SiloClient:
         self.config = config
 
     def get(self, path, params=None, *, public=False, timeout=5):
+        return self.request(path, params, public=public, timeout=timeout)
+
+    def post(self, path, body):
+        return self.request(path, body=body, timeout=8)
+
+    def request(self, path, params=None, *, public=False, timeout=5, body=None):
         url = self.config.silo_url.rstrip("/") + "/api/v2" + path
         if params:
             url += "?" + urlencode(params, doseq=True)
         headers = {"Accept": "application/json", "User-Agent": "silo-tracearr-bridge/0.1"}
         if not public:
             headers["Authorization"] = "Bearer " + self.config.silo_api_key
+        encoded = None
+        if body is not None:
+            encoded = json.dumps(body, allow_nan=False).encode()
+            headers["Content-Type"] = "application/json"
         try:
             # No redirects: never forward the Silo key to another origin.
-            with build_opener(NoRedirects).open(Request(url, headers=headers), timeout=timeout) as response:
+            with build_opener(NoRedirects).open(Request(url, data=encoded, headers=headers), timeout=timeout) as response:
                 body = response.read(8 * 1024 * 1024 + 1)
                 if len(body) > 8 * 1024 * 1024:
                     raise UpstreamError("Silo response exceeded 8 MiB")
@@ -40,7 +54,7 @@ class SiloClient:
         except HTTPError as error:
             code = error.code
             error.close()
-            raise UpstreamError(f"Silo returned HTTP {code} for {path}") from None
+            raise UpstreamError(f"Silo returned HTTP {code} for {path}", status=code) from None
         except (URLError, TimeoutError, OSError):
             raise UpstreamError(f"Silo connection failed for {path}") from None
         except (ValueError, UnicodeError):

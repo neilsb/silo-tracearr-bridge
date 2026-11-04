@@ -21,7 +21,8 @@ def main():
             bridge.verify()
             sessions = bridge.get("/Sessions", {})
             print(json.dumps({"server": bridge.info(), "active_sessions": len(sessions),
-                              "users": len(bridge.users()), "libraries": len(bridge.libraries())}, indent=2))
+                              "users": len(bridge.users()), "libraries": len(bridge.libraries()),
+                              "termination_supported": bridge.can_terminate()}, indent=2))
             return
         with make_server(config) as server:
             logging.info("Bridge listening on %s:%d", config.host, config.port)

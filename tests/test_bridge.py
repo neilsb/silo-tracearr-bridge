@@ -3,6 +3,7 @@
 import copy
 import json
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
@@ -51,6 +52,27 @@ class NativeHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def do_POST(self):
+        path = self.path.removeprefix("/api/v2")
+        data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        self.server.writes.append((path, data, self.headers.get("Authorization")))
+        status = self.server.failures.get(path, 200)
+        session_id = path.split("/")[-2]
+        if self.headers.get("Authorization") != "Bearer silo-secret":
+            status = 401
+        receipt = {"session_id": session_id, "authority_revoked": self.server.revoke,
+                   "durable_state": "stopped", "client_notified": False, "delivery": "unavailable"}
+        if status != 200:
+            receipt = {"error": "upstream secret must not leak"}
+        elif self.server.revoke:
+            self.server.sessions = [s for s in self.server.sessions if s["session_id"] != session_id]
+        body = json.dumps(receipt).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         target = urlsplit(self.path)
         path, query = target.path.removeprefix("/api/v2"), parse_qs(target.query)
@@ -71,6 +93,10 @@ class NativeHandler(BaseHTTPRequestHandler):
             data = {"server_id": "stable-deployment-id"}
         elif path == "/admin/sessions/capabilities":
             data = {"available": True}
+        elif path == "/admin/sessions/command-capabilities":
+            # Termination is independent of sequenced player command support.
+            data = {"available": False, "actions": ["terminate"] if self.server.controls else [],
+                    "terminate_revokes_authority": self.server.controls}
         elif path == "/admin/catalog/capabilities":
             data = {"item_listing": True}
         elif path == "/user/libraries":
@@ -104,6 +130,8 @@ class IntegrationTests(unittest.TestCase):
         self.native.failures, self.native.requests = {}, []
         self.native.bad_shape = self.native.loop_cursor = False
         self.native.artwork_type = "image/webp"
+        self.native.controls = self.native.revoke = True
+        self.native.writes = []
         self.config = Config(f"http://127.0.0.1:{self.native.server_port}", "silo-secret", "bridge-secret")
         self.bridge = Server(("127.0.0.1", 0), Bridge(self.config))
         for server in (self.native, self.bridge):
@@ -117,10 +145,13 @@ class IntegrationTests(unittest.TestCase):
         server.server_close()
         thread.join()
 
-    def request(self, path, headers=None, method="GET"):
+    def request(self, path, headers=None, method="GET", body=None):
         if headers is None:
             headers = {"Authorization": 'MediaBrowser Client="Tracearr", Token="bridge-secret"'}
-        req = Request(f"http://127.0.0.1:{self.bridge.server_port}" + path, headers=headers, method=method)
+        if body is not None:
+            headers = dict(headers, **{"Content-Type": "application/json"})
+        req = Request(f"http://127.0.0.1:{self.bridge.server_port}" + path, headers=headers, method=method,
+                      data=json.dumps(body).encode() if body is not None else None)
         try:
             response = urlopen(req, timeout=5)
         except HTTPError as error:
@@ -144,7 +175,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.request("/Sessions", {"X-Emby-Token": "bridge-secret"})[0], 200)
         self.assertEqual(self.request("/Sessions?api_key=bridge-secret", {})[0], 200)
         self.assertEqual(self.request("/Sessions", {"X-Emby-Authorization": 'MediaBrowser Token="bridge-secret"'})[0], 200)
-        self.assertEqual(self.request("/Sessions/a/Playing/Stop", method="POST")[0], 405)
+        self.assertEqual(self.request("/Sessions/a/Playing/Pause", method="POST")[0], 405)
         self.assertEqual(self.request("/api/v2/admin/users")[0], 404)
 
     def test_paginated_users_libraries_and_identity_consistency(self):
@@ -166,7 +197,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result["PlayState"]["PositionTicks"], 902500000)
         self.assertEqual(result["NowPlayingItem"]["RunTimeTicks"], 18000000000)
         self.assertEqual(result["NowPlayingItem"]["ParentIndexNumber"], 0)
-        self.assertFalse(result["SupportsMediaControl"])
+        self.assertTrue(result["SupportsMediaControl"])
         self.native.sessions[0]["is_paused"] = True
         self.assertTrue(self.request("/Sessions")[1][0]["PlayState"]["IsPaused"])
         second = dict(SESSION, session_id="compat-play-43", user_id="8", username="bob", is_jellyfin_client=True)
@@ -215,6 +246,54 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.request("/Plugins")[1], [])
         self.assertEqual(self.request("/Items?Filters=IsPlayed")[0], 501)
         self.assertEqual(self.request("/Users/user-Nw/Items")[0], 501)
+
+    def test_tracearr_terminate_sequence_revokes_without_player_control(self):
+        result = self.request("/Sessions")[1][0]
+        self.assertTrue(result["SupportsMediaControl"])
+        path = "/Sessions/" + result["Id"]
+        self.assertEqual(self.request(path + "/Message", method="POST",
+                                      body={"Text": "Please stop sharing", "Header": "Stream Terminated"})[0], 202)
+        self.assertEqual(self.native.writes, [])  # Reason delivered with terminate, not as an unrelated command.
+        status, receipt = self.request(path + "/Playing/Stop", method="POST")
+        self.assertEqual(status, 200)
+        self.assertTrue(receipt["authority_revoked"])
+        self.assertFalse(receipt["client_notified"])
+        self.assertEqual(self.native.writes, [("/admin/sessions/native-play-42/terminate",
+                                             {"reason": "Please stop sharing"}, "Bearer silo-secret")])
+        self.assertEqual(self.request("/Sessions")[1], [])
+
+    def test_control_authentication_and_route_boundaries(self):
+        for action in ("Message", "Playing/Stop"):
+            self.assertEqual(self.request("/Sessions/native-play-42/" + action, {}, "POST")[0], 401)
+        for path in ("/api/v2/admin/users", "/Sessions/../Playing/Stop", "/Sessions/a%2fb/Playing/Stop"):
+            self.assertEqual(self.request(path, method="POST")[0], 405)
+        for body in (["not an object"], {"Text": 1}, {"Text": "x" * 1025}):
+            self.assertEqual(self.request("/Sessions/native-play-42/Message", method="POST", body=body)[0], 400)
+        self.assertEqual(self.native.writes, [])
+
+    def test_unsupported_controls_do_not_break_monitoring(self):
+        self.native.controls = False
+        self.assertFalse(self.request("/Sessions")[1][0]["SupportsMediaControl"])
+        self.assertEqual(self.request("/Sessions/native-play-42/Playing/Stop", method="POST")[0], 501)
+        self.assertEqual(self.native.writes, [])
+
+    def test_termination_failure_is_not_reported_as_success(self):
+        path = "/Sessions/native-play-42/Playing/Stop"
+        upstream = "/admin/sessions/native-play-42/terminate"
+        for status, expected in [(403, 403), (404, 404), (409, 409), (503, 502)]:
+            self.native.failures[upstream] = status
+            response, body = self.request(path, method="POST")
+            self.assertEqual(response, expected)
+            self.assertNotIn("upstream secret", str(body))
+        self.native.failures.clear()
+        self.native.revoke = False
+        self.assertEqual(self.request(path, method="POST")[0], 502)
+        self.assertEqual(len(self.native.sessions), 1)
+
+    def test_stale_termination_reason_is_not_reused(self):
+        self.bridge.bridge.reasons["native-play-42"] = (time.monotonic() - 1, "old reason")
+        self.assertEqual(self.request("/Sessions/native-play-42/Playing/Stop", method="POST")[0], 200)
+        self.assertEqual(self.native.writes[0][1], {"reason": "Stream terminated by Tracearr"})
 
     def test_playback_poster_authentication_and_binary_delivery(self):
         self.native.sessions[0]["poster_url"] = "/api/v2/artwork/local/poster.webp?signature=secret"

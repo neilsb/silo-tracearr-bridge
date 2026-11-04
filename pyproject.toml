@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "silo-tracearr-bridge"
 version = "0.1.0"
-description = "Read-only Jellyfin API bridge for monitoring Silo with Tracearr"
+description = "Jellyfin API bridge for monitoring Silo and terminating streams with Tracearr"
 requires-python = ">=3.12"
 dependencies = []
 
