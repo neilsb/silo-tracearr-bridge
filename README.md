@@ -14,6 +14,8 @@ dependencies. This is an independent integration, not an official Silo plugin.
 - Synchronize login accounts and movie/TV libraries, movies, series, episodes,
   external IDs, and available file-version metadata.
 - Keep stable server, account, media, and file IDs across bridge restarts.
+- Show currently playing posters through an authenticated Jellyfin image route,
+  using the signed artwork URL supplied by Silo.
 
 Tracearr records history from the sessions it observes. It controls the polling
 interval; the bridge reads Silo on each `/Sessions` request. Silo's built-in
@@ -84,8 +86,10 @@ also install with `python3 -m pip install .` and use `silo-tracearr-bridge`.
 
 ## Current limits
 
-This is a first implementation, tested with simulated Silo HTTP responses and
-Tracearr's actual response parsers, **not yet with a live Silo/Tracearr pair**.
+This is a first implementation, tested with simulated Silo HTTP responses,
+Tracearr's actual response parsers, and live Silo playback/poster requests.
+Initial server connection and playback tracking have also been reported working
+in Tracearr; other features still need broader live validation.
 It targets Silo's current v2 monitoring endpoints, which older releases may lack.
 
 - **Account-level tracking:** household profiles are grouped under their login
@@ -95,8 +99,15 @@ It targets Silo's current v2 monitoring endpoints, which older releases may lack
   events. Tracearr's optional SSE probe receives 404 and can use polling.
 - **Read-only:** no stream termination, messaging, account changes, media
   playback, or member sign-in. Control support is advertised as false.
-- **No artwork or historical import:** no posters/avatars, Playback Reporting
-  plugin emulation, activity-log translation, or pre-existing watch history.
+- **Playback artwork only:** posters are discovered from active sessions. Only
+  same-origin native Silo artwork URLs are supported; external artwork/CDN URLs
+  are omitted. The last 16 fetched images are cached in memory (up to 8 MiB each),
+  with up to 512 URL registrations. After a bridge restart, active sessions can
+  restore artwork; older history relies on Tracearr's own image cache. No general
+  library artwork sync or avatars yet. Image resizing parameters are accepted
+  but the Silo-provided image is served at its existing size.
+- **No historical import:** no Playback Reporting plugin emulation, activity-log
+  translation, or pre-existing watch history.
 - **Movie/TV catalog only:** no standalone season rows, music, ebooks, or
   audiobooks in library sync. Live observations are translated using the media
   type Silo reports; Tracearr may not recognize other media types.
@@ -125,6 +136,14 @@ It targets Silo's current v2 monitoring endpoints, which older releases may lack
   `/api/v2/admin/catalog/capabilities`.
 - **No session location:** verify Silo itself reports the real `client_ip`;
   configuring trusted reverse proxies belongs on Silo.
+- **Wrong city/location:** Tracearr geolocates Silo's `client_ip`, which the bridge
+  passes through unchanged. A proxy/VPN address therefore shows that server's
+  location. For reverse proxies, forward the actual client address in
+  `X-Forwarded-For` and configure Silo's `clientip.trusted_proxies` setting (or
+  `SILO_TRUSTED_PROXIES` environment variable) to trust the actual proxy hop.
+  Silo defaults to trusting private networks and loopback, not public proxy IPs.
+  Preserve the existing trusted hops when adding a proxy, and start a new
+  playback session afterward to verify the newly recorded address.
 
 The bridge accepts Jellyfin `Authorization: MediaBrowser ... Token="..."`,
 legacy `X-Emby-Authorization`/`X-Emby-Token`, and API-key query parameters.

@@ -2,10 +2,12 @@
 
 import threading
 import time
+import re
 from datetime import datetime
 
 from . import __version__, mapping
 from .client import SiloClient, UpstreamError
+from .artwork import Artwork
 
 
 class APIError(Exception):
@@ -43,6 +45,18 @@ class Bridge:
         self.config = config
         self.client = client or SiloClient(config)
         self.cache = Cache()
+        self.artwork = Artwork(config)
+
+    def sessions(self):
+        result = []
+        for row in self.client.collection("/admin/sessions"):
+            mapped = mapping.session(row)
+            item = mapped["NowPlayingItem"]
+            tag = self.artwork.register(item["Id"], row.get("poster_url"))
+            if tag:
+                item["ImageTags"] = {"Primary": tag}
+            result.append(mapped)
+        return result
 
     def verify(self):
         caps = self.client.get("/admin/sessions/capabilities")
@@ -105,6 +119,17 @@ class Bridge:
                 "TotalRecordCount": len(rows), "StartIndex": start}
 
     def get(self, path, query):
+        image_route = re.fullmatch(r"/Items/([^/]+)/Images/Primary(?:/0)?", path, re.IGNORECASE)
+        if image_route:
+            item_id = image_route[1]
+            image = self.artwork.get(item_id, query.get("tag"))
+            if image is None:
+                # A restart loses registrations; recover from current playback.
+                self.sessions()
+                image = self.artwork.get(item_id, query.get("tag"))
+            if image is None:
+                raise APIError(404, "No playback poster available for this item")
+            return image
         if path.lower().startswith("/users/") and path.count("/") == 2 and path.lower() != "/users/me":
             match = next((u for u in self.users() if u["Id"] == path.split("/")[-1]), None)
             if match is None:
@@ -127,7 +152,7 @@ class Bridge:
         if path == "/users":
             return self.users()
         if path == "/sessions":
-            return [mapping.session(row) for row in self.client.collection("/admin/sessions")]
+            return self.sessions()
         if path == "/library/virtualfolders":
             return self.libraries()
         if path == "/items":

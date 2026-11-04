@@ -42,6 +42,8 @@ assert.equal(sessions[0].media.durationMs, 1800000);
 assert.equal(sessions[0].episode.seasonNumber, 0);
 assert.equal(sessions[0].network.ipAddress, '203.0.113.8');
 assert.equal(sessions[0].player.deviceId, 'living-room-tv');
+assert.ok(sessions[0].media.thumbPath.includes('/Images/Primary'));
+assert.equal(sessions[0].media.thumbPath, `/Items/${sessions[0].mediaId}/Images/Primary`);
 assert.equal(sessions[0].quality.bitrate, 12000);
 assert.equal(sessions[0].quality.isTranscode, false);
 assert.equal(sessions[1].quality.isTranscode, true);
@@ -71,6 +73,7 @@ console.log('Tracearr parser contract passed: direct play, video/audio transcode
             "libraries": [mapping.library({"id": "2", "name": "TV", "type": "series"})],
             "items": [mapping.catalog_item(row) for row in CATALOG],
         }
+        payload["sessions"][0]["NowPlayingItem"]["ImageTags"] = {"Primary": "test-image-tag"}
         subprocess.run(["node", str(output)], input=json.dumps(payload), text=True, check=True)
 
 

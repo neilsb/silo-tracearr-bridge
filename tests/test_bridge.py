@@ -13,6 +13,7 @@ from silo_tracearr.bridge import Bridge
 from silo_tracearr.config import Config
 from silo_tracearr.mapping import catalog_item, native_id, resource_id, session
 from silo_tracearr.server import Server
+from silo_tracearr.artwork import Artwork
 
 
 SESSION = {
@@ -54,6 +55,13 @@ class NativeHandler(BaseHTTPRequestHandler):
         target = urlsplit(self.path)
         path, query = target.path.removeprefix("/api/v2"), parse_qs(target.query)
         self.server.requests.append((path, query, self.headers.get("Authorization")))
+        if path == "/artwork/local/poster.webp":
+            self.send_response(200)
+            self.send_header("Content-Type", self.server.artwork_type)
+            self.send_header("Content-Length", "12")
+            self.end_headers()
+            self.wfile.write(b"RIFFtestWEBP")
+            return
         status = 200
         if path != "/system/identity" and self.headers.get("Authorization") != "Bearer silo-secret":
             status, data = 401, {"error": "bad auth"}
@@ -95,6 +103,7 @@ class IntegrationTests(unittest.TestCase):
         self.native.sessions = [copy.deepcopy(SESSION)]
         self.native.failures, self.native.requests = {}, []
         self.native.bad_shape = self.native.loop_cursor = False
+        self.native.artwork_type = "image/webp"
         self.config = Config(f"http://127.0.0.1:{self.native.server_port}", "silo-secret", "bridge-secret")
         self.bridge = Server(("127.0.0.1", 0), Bridge(self.config))
         for server in (self.native, self.bridge):
@@ -207,8 +216,45 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.request("/Items?Filters=IsPlayed")[0], 501)
         self.assertEqual(self.request("/Users/user-Nw/Items")[0], 501)
 
+    def test_playback_poster_authentication_and_binary_delivery(self):
+        self.native.sessions[0]["poster_url"] = "/api/v2/artwork/local/poster.webp?signature=secret"
+        item = self.request("/Sessions")[1][0]["NowPlayingItem"]
+        path = f'/Items/{item["Id"]}/Images/Primary?tag={item["ImageTags"]["Primary"]}&maxWidth=300'
+        self.assertEqual(self.request(path, {})[0], 401)
+        req = Request(f"http://127.0.0.1:{self.bridge.server_port}" + path,
+                      headers={"X-Emby-Token": "bridge-secret"})
+        with urlopen(req) as response:
+            self.assertEqual(response.headers.get_content_type(), "image/webp")
+            self.assertEqual(response.read(), b"RIFFtestWEBP")
+        fetched = [x for x in self.native.requests if x[0] == "/artwork/local/poster.webp"]
+        self.assertEqual(len(fetched), 1)
+        self.assertIsNone(fetched[0][2])  # No Silo or bridge key on signed artwork requests.
+        self.native.sessions = []
+        with urlopen(req) as response:
+            self.assertEqual(response.read(), b"RIFFtestWEBP")  # Retained after playback stops.
+        self.assertEqual(len([x for x in self.native.requests if x[0] == "/artwork/local/poster.webp"]), 1)
+
+    def test_playback_poster_recovers_registration_and_rejects_html(self):
+        self.native.sessions[0]["poster_url"] = "/api/v2/artwork/local/poster.webp"
+        self.native.artwork_type = "text/html"
+        path = f'/Items/{resource_id("item", SESSION["content_id"])}/Images/Primary'
+        status, body = self.request(path)
+        self.assertEqual(status, 502)
+        self.assertIn("content type", body["error"])
+        self.assertEqual(self.request("/Items/nonexistent/Images/Primary")[0], 404)
+
 
 class MappingTests(unittest.TestCase):
+    def test_artwork_only_accepts_silo_artwork_and_stable_tags(self):
+        artwork = Artwork(Config("https://silo.example", "silo-key", "bridge-key"))
+        a = artwork.register("item-1", "/api/v2/artwork/local/poster.webp?signature=a")
+        b = artwork.register("item-1", "/api/v2/artwork/local/poster.webp?signature=b")
+        self.assertEqual(a, b)
+        self.assertIsNotNone(a)
+        for url in ("https://other.example/api/v2/artwork/local/p.webp", "//other.example/p.webp",
+                    "/api/v2/admin/users", "/api/v2/artwork/../../admin/users", "/api/v2/artwork/%2e%2e/admin"):
+            self.assertIsNone(artwork.register("item-1", url))
+
     def test_transcode_and_remux_decisions_and_units(self):
         for method, expected in [("transcode", "Transcode"), ("direct_stream", "Transcode"), ("remux", "DirectStream")]:
             row = dict(SESSION, effective_play_method=method, transcode_audio=method != "remux",

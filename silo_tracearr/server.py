@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from .bridge import APIError, Bridge
 from .client import UpstreamError
+from .artwork import Image
 
 log = logging.getLogger(__name__)
 
@@ -43,9 +44,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def reply(self, status, data):
-        body = json.dumps(data, allow_nan=False, separators=(",", ":")).encode()
+        body = data.body if isinstance(data, Image) else json.dumps(data, allow_nan=False, separators=(",", ":")).encode()
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", data.content_type if isinstance(data, Image) else "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
