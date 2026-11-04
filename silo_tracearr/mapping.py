@@ -128,7 +128,7 @@ def session(row):
     if method != "direct":
         result["TranscodingInfo"] = compact({
             "IsVideoDirect": row.get("video_decision") != "transcode" if row.get("video_decision") else method != "transcode",
-            "IsAudioDirect": row.get("audio_decision") != "transcode" if row.get("audio_decision") else not row.get("transcode_audio", False),
+            "IsAudioDirect": row.get("audio_decision") != "transcode" if row.get("audio_decision") else not (row.get("transcode_audio", False) or method in ("audio", "direct_stream")),
             "VideoCodec": row.get("target_video_codec"), "AudioCodec": row.get("target_audio_codec"),
             "AudioChannels": row.get("target_audio_channels"), "Container": row.get("output_container"),
             "Bitrate": bps(row.get("stream_bitrate_kbps") or row.get("target_bitrate_kbps")),

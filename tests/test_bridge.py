@@ -228,6 +228,10 @@ class MappingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             native_id("item", "item-%%")
 
+    def test_effective_audio_transcode_is_authoritative_without_legacy_flag(self):
+        row = dict(SESSION, effective_play_method="direct_stream")
+        self.assertFalse(session(row)["TranscodingInfo"]["IsAudioDirect"])
+
     def test_missing_metadata_is_not_fabricated(self):
         item = catalog_item(CATALOG[0])
         self.assertNotIn("RunTimeTicks", item)
