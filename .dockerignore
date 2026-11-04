@@ -1,0 +1,6 @@
+*
+!silo_tracearr/
+!silo_tracearr/*.py
+!Dockerfile
+**/__pycache__
+**/*.pyc

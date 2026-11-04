@@ -1,0 +1,12 @@
+services:
+  silo-tracearr-bridge:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${BRIDGE_PORT:-8097}:${BRIDGE_PORT:-8097}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
