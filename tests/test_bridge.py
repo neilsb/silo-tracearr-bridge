@@ -103,6 +103,8 @@ class NativeHandler(BaseHTTPRequestHandler):
             data = {"items": [{"id": "1", "name": "Movies", "type": "movies"},
                               {"id": "2", "name": "TV", "type": "series"},
                               {"id": "3", "name": "Books", "type": "ebooks"}]}
+            if query:
+                status, data = 422, {"error": "This collection does not accept pagination parameters"}
         elif path in ("/admin/sessions", "/admin/users", "/admin/catalog/items"):
             rows = {"/admin/sessions": self.server.sessions, "/admin/users": USERS, "/admin/catalog/items": CATALOG}[path]
             if self.server.bad_shape:

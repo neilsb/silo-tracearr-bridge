@@ -60,9 +60,10 @@ class SiloClient:
         except (ValueError, UnicodeError):
             raise UpstreamError(f"Silo returned invalid JSON for {path}") from None
 
-    def collection(self, path, params=None, *, budget=8):
+    def collection(self, path, params=None, *, budget=8, paginated=True):
         params = dict(params or {})
-        params["limit"] = 200
+        if paginated:
+            params["limit"] = 200
         items, seen = [], set()
         deadline = time.monotonic() + budget
         while True:

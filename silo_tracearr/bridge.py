@@ -141,7 +141,7 @@ class Bridge:
         return self.cache.get("users", 30, lambda: [mapping.user(row) for row in self.client.collection("/admin/users")])
 
     def libraries(self):
-        return self.cache.get("libraries", 60, lambda: [mapping.library(row) for row in self.client.collection("/user/libraries")
+        return self.cache.get("libraries", 60, lambda: [mapping.library(row) for row in self.client.collection("/user/libraries", paginated=False)
                                                        if row["type"] in ("movies", "series", "mixed")])
 
     def catalog(self):
