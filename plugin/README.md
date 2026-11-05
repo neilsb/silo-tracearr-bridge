@@ -12,10 +12,13 @@ On 2026-11-04 the binary was installed into the live Silo server as
 was saved through Silo's settings API. Its own listener started on port **8098**,
 and the plugin verified authenticated `/Sessions` requests over loopback.
 
-The public Silo hostname did not expose port 8098 at that point. The remaining
-deployment step is publishing the port from the Silo Compose service and
-verifying access from Tracearr. The existing Python bridge on 8097 remains the
-active integration until that check and migration are complete.
+On 2026-11-05 the host's LAN listener on port 8098 was externally reachable.
+Liveness, readiness, Jellyfin admin verification, session listing, and discovery
+of all three configured libraries returned HTTP 200. The plugin reported the
+same Silo server ID as the Python bridge. No sessions were active at that check.
+The remaining deployment step is updating the existing Tracearr server URL and
+verifying playback through it. The Python bridge on 8097 remains available
+until migration is confirmed.
 
 ## Build
 
@@ -99,8 +102,8 @@ does not pretend to be a network provider.
   processes sharing one network namespace require a deployment-specific design.
 
 When testing cold-start behavior, check port 8098 **before** invoking `/status`;
-otherwise that request could hide a startup-task problem. Real Silo cold-start
-and external reachability remain to be verified after publishing the port.
+otherwise that request could hide a startup-task problem. External reachability
+is verified; a controlled Silo cold-start test remains to be performed.
 
 ## Administrator helper
 
