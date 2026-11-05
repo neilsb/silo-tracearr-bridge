@@ -20,7 +20,7 @@ import (
 //go:embed manifest.json
 var manifest []byte
 
-const version = "0.2.0"
+const version = "0.2.1"
 
 type pluginServer struct {
 	v1.UnimplementedHttpRoutesServer
@@ -32,6 +32,8 @@ type pluginServer struct {
 	address   string
 	started   time.Time
 	lastError string
+	bridge    *Bridge
+	starts    int
 }
 
 func configEntries(entries []*v1.ConfigEntry) (Config, error) {
@@ -82,6 +84,8 @@ func (p *pluginServer) start() error {
 		return errors.New(p.lastError)
 	}
 	srv := newHTTPServer(p.config)
+	p.bridge = srv.Handler.(*Bridge)
+	p.starts++
 	p.server, p.address, p.started, p.lastError = srv, listener.Addr().String(), time.Now().UTC(), ""
 	go func() {
 		err := srv.Serve(listener)
@@ -97,7 +101,36 @@ func (p *pluginServer) start() error {
 	return nil
 }
 
-func (p *pluginServer) status(ctx context.Context) (map[string]any, error) {
+func (p *pluginServer) status(ctx context.Context) (data map[string]any, err error) {
+	defer func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if data == nil {
+			data = map[string]any{}
+		}
+		data["running"] = p.server != nil
+		data["version"] = version
+		data["listener_starts"] = p.starts
+		data["last_listener_error"] = p.lastError
+		if p.server != nil {
+			data["listen_address"] = p.address
+			data["uptime_seconds"] = time.Since(p.started).Seconds()
+		}
+		if err != nil {
+			data["error"] = err.Error()
+		}
+		if b := p.bridge; b != nil {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			data["upstream"] = map[string]any{
+				"last_session_poll_at":              timestamp(b.lastPoll),
+				"last_successful_session_poll_at":   timestamp(b.lastSuccess),
+				"session_poll_error":                b.pollError,
+				"consecutive_session_poll_failures": b.pollFailures,
+				"session_poll_healthy":              !b.lastPoll.IsZero() && b.pollError == "",
+			}
+		}
+	}()
 	if err := p.start(); err != nil {
 		return nil, err
 	}
@@ -149,10 +182,16 @@ func (p *pluginServer) Handle(ctx context.Context, req *v1.HandleHTTPRequest) (*
 	status := int32(200)
 	if err != nil {
 		status = 503
-		data = map[string]any{"running": false, "error": err.Error()}
 	}
 	body, _ := json.Marshal(data)
 	return &v1.HandleHTTPResponse{StatusCode: status, Headers: map[string]string{"Content-Type": "application/json"}, Body: body}, nil
+}
+
+func timestamp(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.Format(time.RFC3339Nano)
 }
 
 func (p *pluginServer) Run(ctx context.Context, _ *v1.RunScheduledTaskRequest) (*v1.RunScheduledTaskResponse, error) {

@@ -11,6 +11,10 @@ host's LAN address. Live playback monitoring, stream termination, and automatic
 startup after a Silo restart are confirmed. The old Python Compose service is
 stopped; its configuration remains available as a fallback on port 8097.
 
+Plugin v0.2.1 adds listener and session-poll diagnostics. The live Silo task
+checks the listener every 60 seconds as well as at startup; recovery after a
+plugin process stop has been verified.
+
 ## What works
 
 - Add the bridge to Tracearr as a **Jellyfin** server using an API key.

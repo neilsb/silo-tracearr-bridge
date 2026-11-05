@@ -92,6 +92,10 @@ type Bridge struct {
 	posters      map[string]*poster
 	controlUntil time.Time
 	controls     bool
+	lastPoll     time.Time
+	lastSuccess  time.Time
+	pollError    string
+	pollFailures int
 }
 
 func newBridge(c Config) *Bridge {
@@ -339,7 +343,20 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, status, data)
 }
-func (b *Bridge) sessions(ctx context.Context) ([]object, error) {
+func (b *Bridge) sessions(ctx context.Context) (result []object, err error) {
+	defer func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.lastPoll = time.Now().UTC()
+		if err != nil {
+			b.pollError = err.Error()
+			b.pollFailures++
+		} else {
+			b.lastSuccess = b.lastPoll
+			b.pollError = ""
+			b.pollFailures = 0
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, 9*time.Second)
 	defer cancel()
 	controls := b.canTerminate(ctx)

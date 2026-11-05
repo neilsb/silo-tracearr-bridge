@@ -22,6 +22,32 @@ Silo. Migration is complete. The old Python Compose service is stopped; its
 configuration remains available as a fallback on port 8097. To restart it, run
 `docker compose start silo-tracearr-bridge` from the repository root.
 
+## Recovery and diagnostics update (0.2.1)
+
+Version 0.2.1 is deployed. The live listener task has both startup and
+60-second interval triggers. A settings save stopped the plugin process; the
+scheduled task restored port 8098 after 50 seconds without a status request.
+This verifies recovery from a stopped process, rather than an injected crash.
+
+To apply the same schedule on another installation:
+
+```sh
+python3 tools/plugin_admin.py --from-compose recovery 9
+```
+
+This uses Silo's live task-schedule API, preserves existing triggers, and uses
+the schedule ETag to avoid overwriting concurrent changes. No Silo restart is
+needed. Keep the task enabled; recovery depends on Silo's scheduler running.
+
+The admin status response now includes listener uptime, process-local listener
+start count, last listener error, and session-poll diagnostics: last attempt,
+last success, current error, and consecutive failures. An upstream failure
+returns HTTP 503 while retaining the correct listener-running state. Successful
+polling clears the current error and failure count. Timestamps are UTC; counters
+and history reset when the plugin process restarts. Status itself performs a
+session poll, so these timestamps include diagnostic checks as well as Tracearr
+requests. They describe session API connectivity, not every Silo endpoint.
+
 ## Build
 
 From the repository root, with Docker on Linux amd64:
