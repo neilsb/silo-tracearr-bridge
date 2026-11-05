@@ -84,18 +84,22 @@ type poster struct {
 	mime string
 }
 type Bridge struct {
-	cfg          Config
-	http         *http.Client
-	mu           sync.Mutex
-	rows         map[string]cachedRows
-	reasons      map[string]pendingReason
-	posters      map[string]*poster
-	controlUntil time.Time
-	controls     bool
-	lastPoll     time.Time
-	lastSuccess  time.Time
-	pollError    string
-	pollFailures int
+	catalogFlight  *catalogLoad
+	catalogRetryAt time.Time
+	catalogError   error
+	catalogUpdated time.Time
+	cfg            Config
+	http           *http.Client
+	mu             sync.Mutex
+	rows           map[string]cachedRows
+	reasons        map[string]pendingReason
+	posters        map[string]*poster
+	controlUntil   time.Time
+	controls       bool
+	lastPoll       time.Time
+	lastSuccess    time.Time
+	pollError      string
+	pollFailures   int
 }
 
 func newBridge(c Config) *Bridge {
@@ -135,9 +139,25 @@ func (b *Bridge) native(ctx context.Context, method, path string, q url.Values, 
 	if e != nil {
 		return nil, fail(502, "Silo connection failed")
 	}
+	// Only retry read-only catalog pages. Stream termination is never replayed.
+	for attempt := 0; method == "GET" && path == "/admin/catalog/items" && resp.StatusCode == 429 && attempt < 3; attempt++ {
+		delay := retryDelay(resp.Header.Get("Retry-After"), time.Now(), attempt)
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 8192))
+		resp.Body.Close()
+		if delay > 10*time.Minute || waitContext(ctx, delay) != nil {
+			return nil, fail(503, "Silo catalog is rate limited; retry later")
+		}
+		resp, e = b.http.Do(req.Clone(ctx))
+		if e != nil {
+			return nil, fail(502, "Silo connection failed")
+		}
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		status := 502
+		if resp.StatusCode == 429 {
+			status = 503
+		}
 		if strings.HasPrefix(path, "/catalog/items/") && (resp.StatusCode == 404 || resp.StatusCode == 403) {
 			status = 404
 		}
@@ -167,6 +187,11 @@ func (b *Bridge) collection(ctx context.Context, path string, paginated bool) ([
 	rows := []object{}
 	seen := map[string]bool{}
 	for {
+		if path == "/admin/catalog/items" && len(rows) > 0 {
+			if waitContext(ctx, 100*time.Millisecond) != nil {
+				return nil, fail(503, "catalog scan timed out")
+			}
+		}
 		result, e := b.native(ctx, "GET", path, q, nil, false)
 		if e != nil {
 			return nil, e
@@ -201,6 +226,9 @@ func (b *Bridge) collection(ctx context.Context, path string, paginated bool) ([
 	}
 }
 func (b *Bridge) cached(ctx context.Context, path string, paginated bool) ([]object, error) {
+	if path == "/admin/catalog/items" {
+		return b.catalog(ctx)
+	}
 	b.mu.Lock()
 	saved, ok := b.rows[path]
 	b.mu.Unlock()
@@ -343,6 +371,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var ae *apiError
 		if errors.As(e, &ae) {
 			status = ae.code
+		}
+		if status == 503 {
+			w.Header().Set("Retry-After", "10")
 		}
 		respond(w, status, object{"error": e.Error()})
 		return

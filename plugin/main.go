@@ -20,7 +20,7 @@ import (
 //go:embed manifest.json
 var manifest []byte
 
-const version = "0.2.3"
+const version = "0.2.4"
 
 type pluginServer struct {
 	v1.UnimplementedHttpRoutesServer
@@ -129,6 +129,11 @@ func (p *pluginServer) status(ctx context.Context) (data map[string]any, err err
 				"consecutive_session_poll_failures": b.pollFailures,
 				"session_poll_healthy":              !b.lastPoll.IsZero() && b.pollError == "",
 			}
+			catalogError := ""
+			if b.catalogError != nil {
+				catalogError = b.catalogError.Error()
+			}
+			data["catalog"] = map[string]any{"scan_running": b.catalogFlight != nil, "last_success_at": timestamp(b.catalogUpdated), "last_error": catalogError, "cached_items": len(b.rows["/admin/catalog/items"].rows)}
 		}
 	}()
 	if err := p.start(); err != nil {

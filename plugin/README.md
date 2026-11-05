@@ -91,8 +91,30 @@ selection. Live movie, series, and episode artwork requests returned HTTP 200
 with WebP images after deployment.
 
 The live verification also found Silo returning HTTP 429 during full catalog
-enumeration (`/Items`). That library-sync rate-limit issue is separate from
-individual poster lookup and remains unresolved.
+enumeration (`/Items`). Version 0.2.4 addresses that issue as described below.
+
+## Catalog rate limiting in 0.2.4
+
+Catalog pagination waits at least 100 ms between pages. Concurrent requests
+share one scan instead of duplicating the native API traffic. A 429 response
+retries the same read-only page up to three times, honoring `Retry-After`
+(seconds or HTTP date), with 1/2/4-second minimum backoff. Writes such as stream
+termination are never retried by this mechanism.
+
+Only complete snapshots are published, cached for five minutes. The background
+scan can continue after an individual HTTP request disconnects or times out,
+and is bounded to ten minutes and 200,000 items. While a scan is unfinished, a
+request reaching its deadline receives HTTP 503 with `Retry-After: 10`; later
+requests share the same scan. Failed scans return errors, never partial or empty
+success responses, with a ten-second cooldown before another scan can start.
+
+Admin status includes scan-running state, last successful scan time, last
+error, and cached item count. Counts refer to the last complete snapshot.
+
+Live verification loaded all **21,785 items** in **12.8 seconds** with HTTP 200.
+Cached queries reported **1,369 movies** and **415 shows** in approximately
+0.01 seconds each. Session polling remained healthy. Tests cover shared scans,
+caller cancellation, 429 retries, incomplete-page failure, and retry timing.
 
 ## Build
 
