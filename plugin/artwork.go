@@ -28,7 +28,16 @@ type imageLoad struct {
 	err   error
 }
 
-func (b *Bridge) image(ctx context.Context, path, tag string) (*poster, error) {
+func (b *Bridge) image(ctx context.Context, path, tag string) (result *poster, resultErr error) {
+	defer func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.artworkRequests++
+		if resultErr != nil {
+			b.artworkFailures++
+			b.artworkError = resultErr.Error()
+		}
+	}()
 	key := imageRoute.FindStringSubmatch(path)[1] + ":" + tag
 	b.mu.Lock()
 	if load := b.imageFlights[key]; load != nil {

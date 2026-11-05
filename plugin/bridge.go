@@ -84,25 +84,28 @@ type poster struct {
 	mime string
 }
 type Bridge struct {
-	metadataGate   chan struct{}
-	metadataNext   time.Time
-	imageFlights   map[string]*imageLoad
-	catalogFlight  *catalogLoad
-	catalogRetryAt time.Time
-	catalogError   error
-	catalogUpdated time.Time
-	cfg            Config
-	http           *http.Client
-	mu             sync.Mutex
-	rows           map[string]cachedRows
-	reasons        map[string]pendingReason
-	posters        map[string]*poster
-	controlUntil   time.Time
-	controls       bool
-	lastPoll       time.Time
-	lastSuccess    time.Time
-	pollError      string
-	pollFailures   int
+	artworkRequests int
+	artworkFailures int
+	artworkError    string
+	metadataGate    chan struct{}
+	metadataNext    time.Time
+	imageFlights    map[string]*imageLoad
+	catalogFlight   *catalogLoad
+	catalogRetryAt  time.Time
+	catalogError    error
+	catalogUpdated  time.Time
+	cfg             Config
+	http            *http.Client
+	mu              sync.Mutex
+	rows            map[string]cachedRows
+	reasons         map[string]pendingReason
+	posters         map[string]*poster
+	controlUntil    time.Time
+	controls        bool
+	lastPoll        time.Time
+	lastSuccess     time.Time
+	pollError       string
+	pollFailures    int
 }
 
 func newBridge(c Config) *Bridge {

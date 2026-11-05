@@ -20,7 +20,7 @@ import (
 //go:embed manifest.json
 var manifest []byte
 
-const version = "0.2.5"
+const version = "0.3.0"
 
 type pluginServer struct {
 	v1.UnimplementedHttpRoutesServer
@@ -134,6 +134,7 @@ func (p *pluginServer) status(ctx context.Context) (data map[string]any, err err
 				catalogError = b.catalogError.Error()
 			}
 			data["catalog"] = map[string]any{"scan_running": b.catalogFlight != nil, "last_success_at": timestamp(b.catalogUpdated), "last_error": catalogError, "cached_items": len(b.rows["/admin/catalog/items"].rows)}
+			data["artwork"] = map[string]any{"requests": b.artworkRequests, "failures": b.artworkFailures, "last_error": b.artworkError, "cached_images": len(b.posters), "in_flight": len(b.imageFlights)}
 		}
 	}()
 	if err := p.start(); err != nil {
@@ -180,6 +181,9 @@ func (p *pluginServer) status(ctx context.Context) (data map[string]any, err err
 }
 
 func (p *pluginServer) Handle(ctx context.Context, req *v1.HandleHTTPRequest) (*v1.HandleHTTPResponse, error) {
+	if req.GetMethod() == "GET" && req.GetPath() == "/diagnostics" {
+		return p.diagnostics(ctx)
+	}
 	if req.GetMethod() != "GET" || req.GetPath() != "/status" {
 		return &v1.HandleHTTPResponse{StatusCode: 404}, nil
 	}

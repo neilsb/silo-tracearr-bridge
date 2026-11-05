@@ -1,5 +1,12 @@
 # Native Silo plugin
 
+For installation through the standalone plugin repository, see
+[releases and updates](../RELEASING.md). Version 0.3.0 adds an admin navigation
+entry named **Tracearr Bridge** with listener health, session checks, catalog
+scan state, artwork request/failure counters, and troubleshooting guidance.
+The page is `/api/v2/plugin-content/plugins/<installation-id>/diagnostics`;
+it requires Silo admin authentication. `/status` remains the JSON counterpart.
+
 This is a native Go port of the existing bridge, packaged with Silo's public
 plugin SDK v0.32.1. One self-contained Linux amd64 binary supports both Silo's
 plugin protocol and standalone HTTP serving. It does not need Python or the

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tracearr Bridge diagnostics</title>
+<style>
+:root{color-scheme:light dark;font:16px/1.5 system-ui,sans-serif}body{margin:0;padding:clamp(1rem,4vw,3rem);background:light-dark(#f4f6fa,#10151e);color:light-dark(#182331,#e4eaf3)}main{max-width:1100px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:1rem}h1{font-size:1.8rem;margin:0}h2{font-size:1.1rem;margin-top:0}.muted{color:light-dark(#526171,#abb9ca)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:1rem;margin:1.5rem 0}section{background:light-dark(white,#1b2432);border:1px solid light-dark(#dce2ea,#354357);border-radius:12px;padding:1.3rem}dl{margin:0}dt{color:light-dark(#526171,#abb9ca);font-size:.85rem;margin-top:.8rem}dd{margin:0;overflow-wrap:anywhere}a{color:inherit}header a{padding:.6rem 1rem;border:1px solid;border-radius:8px;text-decoration:none}.ok{color:light-dark(#167447,#71dfa5)}.error{color:light-dark(#ad3425,#ffb1a6);overflow-wrap:anywhere}code{overflow-wrap:anywhere}li{margin:.5rem 0}footer{font-size:.85rem}
+</style></head><body><main>
+<header><div><h1>Tracearr Bridge</h1><div class="muted">Diagnostics · version {{.version}}</div></div><a href="">Refresh checks</a></header>
+{{if .error}}<section class="error" role="alert"><strong>Health check needs attention</strong><p>{{.error}}</p></section>{{end}}
+<div class="grid">
+<section><h2>Listener</h2><strong class="{{if .running}}ok{{else}}error{{end}}">{{if .running}}Running{{else}}Stopped{{end}}</strong><dl><dt>Listen address</dt><dd>{{.listen_address}}</dd><dt>Uptime</dt><dd>{{if .uptime_seconds}}{{printf "%.0f" .uptime_seconds}} seconds{{else}}—{{end}}</dd><dt>Starts in this process</dt><dd>{{.listener_starts}}</dd><dt>Last listener error</dt><dd>{{if .last_listener_error}}{{.last_listener_error}}{{else}}None{{end}}</dd></dl></section>
+<section><h2>Silo connection</h2>{{with .upstream}}<strong class="{{if .session_poll_healthy}}ok{{else}}error{{end}}">{{if .session_poll_healthy}}Session API reachable{{else}}Session check failed{{end}}</strong><dl><dt>Last successful poll (UTC)</dt><dd>{{if .last_successful_session_poll_at}}{{.last_successful_session_poll_at}}{{else}}Not yet{{end}}</dd><dt>Consecutive failed polls</dt><dd>{{.consecutive_session_poll_failures}}</dd><dt>Current error</dt><dd>{{if .session_poll_error}}{{.session_poll_error}}{{else}}None{{end}}</dd></dl>{{else}}Not checked{{end}}<p>Active sessions: {{if .loopback_authenticated}}{{.active_sessions}}{{else}}Unavailable{{end}}</p></section>
+<section><h2>Library sync</h2>{{with .catalog}}<strong>{{if .scan_running}}Scan in progress{{else}}Idle{{end}}</strong><dl><dt>Items in last complete snapshot</dt><dd>{{.cached_items}}</dd><dt>Last complete scan (UTC)</dt><dd>{{if .last_success_at}}{{.last_success_at}}{{else}}No scan yet{{end}}</dd><dt>Last scan error</dt><dd>{{if .last_error}}<span class="error">{{.last_error}}</span>{{else}}None{{end}}</dd></dl>{{else}}Not started{{end}}</section>
+<section><h2>Artwork</h2>{{with .artwork}}<dl><dt>Requests / failed requests</dt><dd>{{.requests}} / {{.failures}}</dd><dt>Cached entries / lookups in progress</dt><dd>{{.cached_images}} / {{.in_flight}}</dd><dt>Most recent failure</dt><dd>{{if .last_error}}<span class="error">{{.last_error}}</span>{{else}}None{{end}}</dd></dl>{{else}}Not started{{end}}</section>
+</div>
+<section><h2>Connection checks</h2><ul>
+<li><strong>Cannot bind:</strong> check that the configured port is free inside Silo.</li>
+<li><strong>Silo HTTP 401 or 403:</strong> check the upstream API key and its permissions. Artwork also needs profile listing and catalog detail access.</li>
+<li><strong>HTTP 429:</strong> Silo is rate limiting requests. Metadata reads are paced and retried; check other consumers if errors persist.</li>
+<li><strong>No artwork:</strong> the item may lack a poster or be unavailable to the API key owner's primary profile.</li>
+<li><strong>Tracearr cannot connect:</strong> publish port 8098 from the Silo container, use its LAN address in Tracearr, and use the separate bridge key.</li>
+</ul><p>This page checks the listener from inside Silo. It cannot prove that Tracearr can reach the published port. Keep the listener task enabled at startup and on a 60-second interval for recovery.</p></section>
+<footer class="muted">Refresh runs an authenticated session check and starts the listener if needed. All counters reset when the plugin process restarts. Artwork failures include missing posters; the most recent failure remains visible after successful requests. No credentials are displayed.</footer>
+</main></body></html>

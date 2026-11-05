@@ -1,12 +1,28 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
+
+func TestDiagnosticsEscapesErrorsAndShowsUnavailableSessions(t *testing.T) {
+	var body bytes.Buffer
+	err := diagnosticsTemplate.Execute(&body, map[string]any{"version": version, "error": "<script>alert(1)</script>", "running": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body.String(), "<script>") || !strings.Contains(body.String(), "&lt;script&gt;") {
+		t.Fatal("diagnostics did not escape error text")
+	}
+	if !strings.Contains(body.String(), "Active sessions: Unavailable") {
+		t.Fatal("failed check presented as zero sessions")
+	}
+}
 
 func TestStatusPreservesListenerDuringUpstreamFailure(t *testing.T) {
 	var unavailable atomic.Bool

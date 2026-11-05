@@ -1,6 +1,6 @@
 {
   "plugin_id": "community.tracearr-bridge",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "checksum": "__CHECKSUM__",
   "silo_api_version": "v1",
   "supported_platforms": [{"os": "linux", "arch": "amd64"}],
@@ -10,15 +10,20 @@
     "summary": "Monitor Silo with Tracearr through a Jellyfin-compatible listener.",
     "description_markdown": "Native Go bridge. The plugin owns a separate HTTP listener; expose its port from the Silo container. An independent community integration.",
     "setup_markdown": "Save the Bridge settings, then visit the authenticated plugin /status route to start and check the listener. Point Tracearr at the exposed listener as a Jellyfin server. The startup task starts the listener after a Silo restart.",
-    "publisher_name": "Local integration",
-    "license_spdx": "NOASSERTION"
+    "publisher_name": "neilsb",
+    "homepage_url": "https://github.com/neilsb/silo-tracearr-bridge",
+    "source_url": "https://github.com/neilsb/silo-tracearr-bridge",
+    "license_spdx": "MIT"
   },
   "metadata": {"configuration_check": true},
   "capabilities": [
     {"type": "http_routes.v1", "id": "diagnostics", "display_name": "Bridge status"},
     {"type": "scheduled_task.v1", "id": "listener", "display_name": "Start and check Tracearr listener", "description": "Start the listener at Silo startup and verify its local health."}
   ],
-  "http_routes": [{"id": "status", "method": "GET", "path": "/status", "access": "admin"}],
+  "http_routes": [
+    {"id": "status", "method": "GET", "path": "/status", "access": "admin"},
+    {"id": "diagnostics-page", "method": "GET", "path": "/diagnostics", "access": "admin", "navigable": true, "navigation_label": "Tracearr Bridge", "navigation_kind": "admin"}
+  ],
   "global_config_schema": [{
     "key": "bridge", "title": "Bridge settings", "required": false,
     "json_schema": "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"silo_url\":{\"type\":\"string\"},\"silo_api_key\":{\"type\":\"string\"},\"bridge_api_key\":{\"type\":\"string\"},\"listen_address\":{\"type\":\"string\"},\"server_name\":{\"type\":\"string\"}}}",

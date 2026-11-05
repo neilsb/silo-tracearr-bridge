@@ -1,0 +1,30 @@
+name: Release plugin
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: plugin-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: docker build --platform linux/amd64 --target artifact --output type=local,dest=plugin/dist plugin
+      - run: python3 tools/verify_go_bridge.py
+      - run: python3 tools/package_release.py --repository "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"
+      - run: sha256sum -c SHA256SUMS
+        working-directory: plugin/dist
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            plugin/dist/tracearr-bridge-linux-amd64 \
+            plugin/dist/manifest.json plugin/dist/repository.json plugin/dist/SHA256SUMS \
+            --verify-tag --title "Tracearr Bridge $GITHUB_REF_NAME" --generate-notes

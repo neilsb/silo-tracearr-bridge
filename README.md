@@ -1,19 +1,28 @@
 # Silo–Tracearr bridge
 
-A standalone service that presents Silo's native monitoring API as
-the Jellyfin API consumed by Tracearr. Written in Python 3.12+, with no runtime
-dependencies. This is an independent integration, not an official Silo plugin.
+A native Go plugin that presents Silo's monitoring API as the Jellyfin API
+consumed by Tracearr. This is an independent, MIT-licensed integration.
 
-**Native plugin prototype:** the [Go plugin implementation](plugin/README.md)
-can now run inside Silo and has been installed and checked on the live server.
-Its separate listener uses port 8098 and is verified reachable on the Silo
-host's LAN address. Live playback monitoring, stream termination, and automatic
-startup after a Silo restart are confirmed. The old Python Compose service is
-stopped; its configuration remains available as a fallback on port 8097.
+## Install the native plugin
 
-Plugin v0.2.1 adds listener and session-poll diagnostics. The live Silo task
-checks the listener every 60 seconds as well as at startup; recovery after a
-plugin process stop has been verified.
+Add this URL to Silo's plugin repositories, refresh the catalog, and install
+**Tracearr Bridge**:
+
+```text
+https://github.com/neilsb/silo-tracearr-bridge/releases/latest/download/repository.json
+```
+
+Save the upstream Silo key and a separate bridge key, publish port **8098** from
+the Silo container, then add that address to Tracearr as a Jellyfin server.
+The plugin's **Tracearr Bridge** admin page shows health and diagnostics.
+Keep its listener task enabled at startup and every 60 seconds for recovery.
+
+See [complete setup](plugin/README.md), [upgrades and releases](RELEASING.md),
+and [release notes](CHANGELOG.md). Linux amd64 is currently supported.
+This repository is separate from Silo's trusted community catalog.
+
+The original dependency-free Python bridge is retained as a standalone fallback;
+its Docker setup is documented below.
 
 ## What works
 
@@ -34,7 +43,7 @@ Tracearr records history from the sessions it observes. It controls the polling
 interval; the bridge reads Silo on each `/Sessions` request. Silo's built-in
 Jellyfin listener is not required.
 
-## Quick start (Docker)
+## Standalone Python fallback (Docker)
 
 1. Create an **administrator-owned Silo API key** under Silo's admin settings.
    If your version offers scope selection, select `admin:monitor:read` and
