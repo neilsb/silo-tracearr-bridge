@@ -14,3 +14,23 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: python -m pip install .
       - run: silo-tracearr-bridge --help
+  native-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: plugin/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: go test -race ./...
+        working-directory: plugin
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o dist/tracearr-bridge-linux-amd64 .
+        working-directory: plugin
+      - run: python3 tools/verify_go_bridge.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tracearr-bridge-linux-amd64
+          path: plugin/dist/tracearr-bridge-linux-amd64

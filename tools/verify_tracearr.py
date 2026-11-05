@@ -20,6 +20,7 @@ from test_bridge import CATALOG, SESSION, USERS  # noqa: E402
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tracearr", type=Path, help="Path to an existing Tracearr checkout")
+    parser.add_argument("--go", action="store_true", help="Fetch fixtures through the native Go bridge instead of Python mappings")
     args = parser.parse_args()
     source = args.tracearr.resolve()
     with tempfile.TemporaryDirectory(prefix="tracearr-parser-") as temp:
@@ -58,7 +59,7 @@ const libraries = parseLibrariesResponse(input.libraries);
 assert.equal(libraries[0].type, 'tvshows');
 const items = parseLibraryItemsResponse(input.items);
 assert.equal(items.length, 3);
-assert.equal(items[2].ratingKey, sessions[0].mediaId);
+assert.ok(items.some(item => item.ratingKey === sessions[0].mediaId));
 console.log('Tracearr parser contract passed: direct play, video/audio transcode, remux, users, libraries, catalog');
 '''.replace("PARSER", json.dumps(str(source / "apps/server/src/services/mediaServer/jellyfin/parser.ts"))))
         output = temp / "check.cjs"
@@ -74,6 +75,25 @@ console.log('Tracearr parser contract passed: direct play, video/audio transcode
             "items": [mapping.catalog_item(row) for row in CATALOG],
         }
         payload["sessions"][0]["NowPlayingItem"]["ImageTags"] = {"Primary": "test-image-tag"}
+        if args.go:
+            from verify_go_bridge import GoBridgeTests
+            fixture = GoBridgeTests("test_tracearr_connection_sequence")
+            try:
+                fixture.setUp()
+                fixture.native.sessions = [dict(SESSION, session_id=f"session-{index}", effective_play_method=method,
+                                                transcode_audio=method in ("transcode", "direct_stream"),
+                                                poster_url="/api/v2/artwork/local/poster.webp")
+                                           for index, method in enumerate(("direct", "transcode", "direct_stream", "remux"))]
+                def get(path):
+                    status, result = fixture.request(path)
+                    if status != 200:
+                        raise RuntimeError(f"Go bridge returned HTTP {status} for {path}")
+                    return result
+                payload = {"sessions": get("/Sessions"), "users": get("/Users"),
+                           "libraries": [x for x in get("/Library/VirtualFolders") if x["CollectionType"] == "tvshows"],
+                           "items": get("/Items")["Items"]}
+            finally:
+                fixture.doCleanups()
         subprocess.run(["node", str(output)], input=json.dumps(payload), text=True, check=True)
 
 

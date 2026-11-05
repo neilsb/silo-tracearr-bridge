@@ -4,6 +4,12 @@ A standalone service that presents Silo's native monitoring API as
 the Jellyfin API consumed by Tracearr. Written in Python 3.12+, with no runtime
 dependencies. This is an independent integration, not an official Silo plugin.
 
+**Native plugin prototype:** the [Go plugin implementation](plugin/README.md)
+can now run inside Silo and has been installed and checked on the live server.
+Its separate listener uses port 8098. Publishing that port and verifying the
+Tracearr migration are the remaining deployment steps; the Python service
+documented below remains available on port 8097.
+
 ## What works
 
 - Add the bridge to Tracearr as a **Jellyfin** server using an API key.
@@ -199,5 +205,5 @@ Source contracts inspected on 2026-11-04:
 - [Tracearr `25cb413`](https://github.com/connorgallopo/tracearr/tree/25cb41383452392bfab62dba3fec29e2526da6c4):
   Jellyfin client, shared media-server client, and Jellyfin/Emby parsers.
 
-Future plugin packaging can reuse the mapping layer, but would need a supported
-way to access the same host-wide monitoring data and expose these routes.
+See [the native plugin documentation](plugin/README.md) for its build,
+configuration, startup behavior, and verification results.
