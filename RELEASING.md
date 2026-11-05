@@ -14,9 +14,11 @@ for future distribution changes. Current builds support Linux amd64 only.
 
 Refresh Silo's plugin catalog, choose **Tracearr Bridge**, and install the desired
 version. Existing manual installations use the same plugin ID; installing from
-the repository should update that installation rather than create a second
-bridge. Keep the current configuration and Tracearr URL/key. Open the plugin's
-**Tracearr Bridge** diagnostics page to start/check the listener after updating.
+the repository updates that installation rather than creating a second bridge.
+This migration was verified with release 0.3.1, including retained settings and
+the startup/60-second task schedule. Keep the current configuration and Tracearr URL/key. Open the plugin's
+**Tracearr Bridge** diagnostics page from its actions menu to start/check the
+listener after updating.
 
 For first-time setup, publish port 8098 and follow [plugin setup](plugin/README.md).
 Enable the listener task at startup and every 60 seconds. Recovery scheduling is
