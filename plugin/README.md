@@ -48,6 +48,26 @@ and history reset when the plugin process restarts. Status itself performs a
 session poll, so these timestamps include diagnostic checks as well as Tracearr
 requests. They describe session API connectivity, not every Silo endpoint.
 
+## Playback details in 0.2.2
+
+Version 0.2.2 adds source/output video width, source audio channel layout, and
+the effective video encoder hardware accelerator to the Jellyfin response.
+Copied video retains source dimensions and codec; copied audio retains source
+codec and channel count. Output bitrate is no longer substituted for an unknown
+source bitrate during transcoding or remuxing.
+
+Dimensions are emitted only from explicit pixel dimensions or Silo's source
+height field, never inferred from size classes such as `2160p`. Hardware
+encoding is reported only for transcoded video, not remux or audio-only
+conversion. Decoder acceleration, explicit transcode reasons, HDR metadata,
+and transcoder progress are not exposed by the native session API and are not
+fabricated. Tracearr may apply its own defaults to absent fields.
+
+Go race/lifecycle tests, all 15 HTTP integration checks, and the real Tracearr
+parser checks pass, including cropped 3840x1600 source video, 1920x800 output,
+5.1 channel layout, QSV encoding, and copied-video behavior. The deployed
+listener is healthy; no sessions were active during the deployment check.
+
 ## Build
 
 From the repository root, with Docker on Linux amd64:

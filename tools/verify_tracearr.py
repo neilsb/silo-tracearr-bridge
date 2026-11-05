@@ -52,6 +52,17 @@ assert.equal(sessions[1].quality.videoDecision, 'transcode');
 assert.equal(sessions[2].quality.videoDecision, 'copy');
 assert.equal(sessions[2].quality.audioDecision, 'transcode');
 assert.equal(sessions[3].quality.isTranscode, false);
+if (input.richPlayback) {
+  assert.equal(sessions[1].quality.videoWidth, 3840);
+  assert.equal(sessions[1].quality.videoHeight, 1600);
+  assert.equal(sessions[1].quality.streamVideoDetails.width, 1920);
+  assert.equal(sessions[1].quality.streamVideoDetails.height, 800);
+  assert.equal(sessions[1].quality.sourceAudioDetails.channelLayout, '5.1');
+  assert.equal(sessions[1].quality.transcodeInfo.hwEncoding, 'qsv');
+  assert.equal(sessions[2].quality.streamVideoDetails.width, 3840);
+  assert.equal(sessions[2].quality.streamVideoDetails.height, 1600);
+  assert.equal(sessions[2].quality.transcodeInfo.hwEncoding, undefined);
+}
 const users = parseUsersResponse(input.users);
 assert.equal(users[0].id, sessions[0].user.id);
 assert.equal(users[1].isDisabled, true);
@@ -82,6 +93,9 @@ console.log('Tracearr parser contract passed: direct play, video/audio transcode
                 fixture.setUp()
                 fixture.native.sessions = [dict(SESSION, session_id=f"session-{index}", effective_play_method=method,
                                                 transcode_audio=method in ("transcode", "direct_stream"),
+                                                source_video_resolution="3840x1600", source_video_height=1600,
+                                                source_audio_layout="5.1", target_resolution="1920x800",
+                                                transcode_hw_accel="qsv",
                                                 poster_url="/api/v2/artwork/local/poster.webp")
                                            for index, method in enumerate(("direct", "transcode", "direct_stream", "remux"))]
                 def get(path):
@@ -89,7 +103,7 @@ console.log('Tracearr parser contract passed: direct play, video/audio transcode
                     if status != 200:
                         raise RuntimeError(f"Go bridge returned HTTP {status} for {path}")
                     return result
-                payload = {"sessions": get("/Sessions"), "users": get("/Users"),
+                payload = {"richPlayback": True, "sessions": get("/Sessions"), "users": get("/Users"),
                            "libraries": [x for x in get("/Library/VirtualFolders") if x["CollectionType"] == "tvshows"],
                            "items": get("/Items")["Items"]}
             finally:

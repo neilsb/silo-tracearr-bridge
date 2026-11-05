@@ -78,11 +78,15 @@ func bitrate(v any) any {
 	return math.Round(num(v) * 1000)
 }
 func exactHeight(v any) any {
+	return exactDimension(v, 1)
+}
+func exactDimension(v any, axis int) any {
 	parts := strings.Split(strings.ToLower(str(v)), "x")
 	if len(parts) == 2 {
-		n, e := strconv.Atoi(parts[1])
-		if e == nil && n > 0 {
-			return n
+		width, ew := strconv.Atoi(parts[0])
+		height, eh := strconv.Atoi(parts[1])
+		if ew == nil && eh == nil && width > 0 && height > 0 {
+			return []int{width, height}[axis]
 		}
 	}
 	return nil
@@ -146,10 +150,10 @@ func mapSession(r object) (object, error) {
 	}
 	streams := []object{}
 	if str(r["source_video_codec"]) != "" {
-		streams = append(streams, clean(object{"Type": "Video", "Codec": r["source_video_codec"], "Height": first(r["source_video_height"], exactHeight(r["source_video_resolution"]))}))
+		streams = append(streams, clean(object{"Type": "Video", "Codec": r["source_video_codec"], "Width": exactDimension(r["source_video_resolution"], 0), "Height": first(r["source_video_height"], exactHeight(r["source_video_resolution"]))}))
 	}
 	if str(r["source_audio_codec"]) != "" {
-		streams = append(streams, clean(object{"Type": "Audio", "Codec": r["source_audio_codec"], "Index": num(r["audio_track_index"]), "Channels": r["source_audio_channels"], "Language": r["source_audio_language"], "Title": r["source_audio_title"]}))
+		streams = append(streams, clean(object{"Type": "Audio", "Codec": r["source_audio_codec"], "Index": num(r["audio_track_index"]), "Channels": r["source_audio_channels"], "ChannelLayout": r["source_audio_layout"], "Language": r["source_audio_language"], "Title": r["source_audio_title"]}))
 	}
 	fileID := rid("file", r["media_file_id"])
 	itemID := fileID
@@ -160,7 +164,11 @@ func mapSession(r object) (object, error) {
 	if kind == "" {
 		kind = str(r["media_type"])
 	}
-	item := clean(object{"Id": itemID, "Name": first(r["episode_name"], r["media_title"]), "Type": kind, "SeriesName": r["series_name"], "ParentIndexNumber": r["season_number"], "IndexNumber": r["episode_number"], "MediaStreams": streams, "MediaSources": []object{clean(object{"Id": fileID, "MediaStreams": streams, "Bitrate": bitrate(first(r["source_bitrate_kbps"], r["stream_bitrate_kbps"])), "Container": r["source_container"]})}})
+	sourceBitrate := r["source_bitrate_kbps"]
+	if method == "direct" {
+		sourceBitrate = first(sourceBitrate, r["stream_bitrate_kbps"])
+	}
+	item := clean(object{"Id": itemID, "Name": first(r["episode_name"], r["media_title"]), "Type": kind, "SeriesName": r["series_name"], "ParentIndexNumber": r["season_number"], "IndexNumber": r["episode_number"], "MediaStreams": streams, "MediaSources": []object{clean(object{"Id": fileID, "MediaStreams": streams, "Bitrate": bitrate(sourceBitrate), "Container": r["source_container"]})}})
 	if r["file_duration"] != nil {
 		item["RunTimeTicks"] = math.Round(num(r["file_duration"]) * 10000000)
 	}
@@ -175,6 +183,21 @@ func mapSession(r object) (object, error) {
 			audioDirect = r["audio_decision"] != "transcode"
 		}
 		result["TranscodingInfo"] = clean(object{"IsVideoDirect": videoDirect, "IsAudioDirect": audioDirect, "VideoCodec": r["target_video_codec"], "AudioCodec": r["target_audio_codec"], "AudioChannels": r["target_audio_channels"], "Container": r["output_container"], "Bitrate": bitrate(first(r["stream_bitrate_kbps"], r["target_bitrate_kbps"])), "Height": exactHeight(r["target_resolution"])})
+		info := obj(result["TranscodingInfo"])
+		info["Width"] = exactDimension(r["target_resolution"], 0)
+		if videoDirect {
+			info["VideoCodec"] = r["source_video_codec"]
+			info["Width"] = exactDimension(r["source_video_resolution"], 0)
+			info["Height"] = first(r["source_video_height"], exactHeight(r["source_video_resolution"]))
+		} else {
+			// Silo reports the effective encoder accelerator, not decoder hardware.
+			info["HardwareAccelerationType"] = r["transcode_hw_accel"]
+		}
+		if audioDirect {
+			info["AudioCodec"] = r["source_audio_codec"]
+			info["AudioChannels"] = r["source_audio_channels"]
+		}
+		clean(info)
 	}
 	return result, nil
 }
