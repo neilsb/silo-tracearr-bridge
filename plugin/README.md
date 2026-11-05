@@ -68,6 +68,32 @@ parser checks pass, including cropped 3840x1600 source video, 1920x800 output,
 5.1 channel layout, QSV encoding, and copied-video behavior. The deployed
 listener is healthy; no sessions were active during the deployment check.
 
+## Library artwork in 0.2.3
+
+The plugin now resolves `/Items/<id>/Images/Primary` on demand from Silo's
+catalog, without requiring active playback or a previous cache entry. Tracearr
+already generates these URLs during library sync. Movies and shows use their
+posters; episodes prefer the series poster, then season poster, then episode
+image. Existing playback artwork remains a fallback.
+
+Catalog requests use the API key owner's primary profile and respect its Silo
+access restrictions. The deployed unscoped administrator key supports this;
+scoped keys must also permit profile listing and catalog detail reads. No
+profile settings are modified. Missing or inaccessible artwork returns 404.
+Only Silo's same-origin signed artwork URLs are fetched, without forwarding
+the administrator key to the image request.
+
+The image cache remains bounded to 16 entries, each at most 8 MiB, with a
+five-minute lookup lifetime. Empty entries refresh after 30 seconds to avoid
+reusing old signed URLs. Artwork is fetched as needed, not downloaded in bulk.
+Tests cover fresh-process recovery, cache expiry, missing images, and profile
+selection. Live movie, series, and episode artwork requests returned HTTP 200
+with WebP images after deployment.
+
+The live verification also found Silo returning HTTP 429 during full catalog
+enumeration (`/Items`). That library-sync rate-limit issue is separate from
+individual poster lookup and remains unresolved.
+
 ## Build
 
 From the repository root, with Docker on Linux amd64:
@@ -186,9 +212,9 @@ shutdown, and relaunch on the same port. HTTP tests cover playback observations,
 users, libraries, catalog queries, artwork, termination, auth, and failure paths.
 
 The existing functionality is ported: monitoring, movie/TV catalog, account-level
-identity, playback posters, and termination. It has the same functional limits
-as the Python bridge: no SSE, historical import, general player controls, or
-full-library artwork. The Go port retains at most 16 playback poster entries
+identity, playback posters, and termination. The native plugin also supports
+on-demand library artwork. It has no SSE, historical import, or general player
+controls. The Go port retains at most 16 poster entries
 (8 MiB per fetched image) in memory. Source paths and other unavailable metadata
 are not fabricated.
 

@@ -104,7 +104,7 @@ func newBridge(c Config) *Bridge {
 func newHTTPServer(c Config) *http.Server {
 	return &http.Server{Addr: c.Listen, Handler: newBridge(c), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 }
-func (b *Bridge) native(ctx context.Context, method, path string, q url.Values, body any, public bool) (object, error) {
+func (b *Bridge) native(ctx context.Context, method, path string, q url.Values, body any, public bool, profile ...string) (object, error) {
 	target := strings.TrimRight(b.cfg.SiloURL, "/") + "/api/v2" + path
 	if len(q) > 0 {
 		target += "?" + q.Encode()
@@ -125,6 +125,9 @@ func (b *Bridge) native(ctx context.Context, method, path string, q url.Values, 
 		req.Header.Set("Authorization", "Bearer "+b.cfg.SiloKey)
 	}
 	req.Header.Set("Accept", "application/json")
+	if len(profile) > 0 {
+		req.Header.Set("X-Profile-Id", profile[0])
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -135,6 +138,9 @@ func (b *Bridge) native(ctx context.Context, method, path string, q url.Values, 
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		status := 502
+		if strings.HasPrefix(path, "/catalog/items/") && (resp.StatusCode == 404 || resp.StatusCode == 403) {
+			status = 404
+		}
 		if method == "POST" && (resp.StatusCode == 403 || resp.StatusCode == 401) {
 			status = 403
 		}
@@ -670,6 +676,9 @@ func (b *Bridge) image(ctx context.Context, path, tag string) (*poster, error) {
 		defer b.mu.Unlock()
 		var found *poster
 		for k, p := range b.posters {
+			if time.Since(p.at) > 5*time.Minute || (len(p.data) == 0 && time.Since(p.at) > 30*time.Second) {
+				continue
+			}
 			if (tag != "" && k == id+":"+tag) || (tag == "" && strings.HasPrefix(k, id+":")) {
 				if found == nil || p.at.After(found.at) {
 					copy := *p
@@ -681,13 +690,26 @@ func (b *Bridge) image(ctx context.Context, path, tag string) (*poster, error) {
 	}
 	image := find()
 	if image == nil {
-		if _, e := b.sessions(ctx); e != nil {
-			return nil, e
+		var libraryErr error
+		if strings.HasPrefix(id, "item-") {
+			libraryErr = b.libraryPoster(ctx, id)
+			image = find()
 		}
-		image = find()
+		if image == nil {
+			_, sessionErr := b.sessions(ctx)
+			image = find()
+			if image == nil {
+				if libraryErr != nil {
+					return nil, libraryErr
+				}
+				if sessionErr != nil {
+					return nil, sessionErr
+				}
+			}
+		}
 	}
 	if image == nil {
-		return nil, fail(404, "no playback artwork available")
+		return nil, fail(404, "no artwork available for this item or image tag")
 	}
 	if len(image.data) > 0 {
 		return image, nil
