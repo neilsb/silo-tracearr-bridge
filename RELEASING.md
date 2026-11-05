@@ -41,7 +41,7 @@ Local packaging uses the same steps:
 ```sh
 docker build --platform linux/amd64 --target artifact --output type=local,dest=plugin/dist plugin
 python3 tools/verify_go_bridge.py
-python3 tools/package_release.py --tag v0.3.0
+python3 tools/package_release.py --tag v0.3.1
 (cd plugin/dist && sha256sum -c SHA256SUMS)
 ```
 

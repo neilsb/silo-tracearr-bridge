@@ -10,15 +10,6 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def snake_keys(value):
-    if isinstance(value, list):
-        return [snake_keys(item) for item in value]
-    if isinstance(value, dict):
-        return {re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower(): snake_keys(item)
-                for key, item in value.items()}
-    return value
-
-
 def package(directory, repository, tag):
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("Expected GitHub owner/repository")
@@ -26,7 +17,9 @@ def package(directory, repository, tag):
         raise ValueError("Expected a stable vMAJOR.MINOR.PATCH tag")
     binary = directory / "tracearr-bridge-linux-amd64"
     digest = hashlib.sha256(binary.read_bytes()).hexdigest()
-    manifest = snake_keys(json.loads(subprocess.check_output([str(binary.resolve()), "manifest"])))
+    raw = subprocess.check_output([str(binary.resolve()), "manifest"])
+    helper = str((directory / "repository-tool").resolve())
+    manifest = json.loads(subprocess.check_output([helper, "manifest"], input=raw))
     if manifest["checksum"] != digest or manifest["version"] != tag[1:]:
         raise ValueError("Binary checksum/version does not match release")
     if manifest["plugin_id"] != "community.tracearr-bridge":
@@ -41,6 +34,7 @@ def package(directory, repository, tag):
                            "binaries": {"linux/amd64": {"url": f"{assets}/{binary.name}",
                                                          "checksum": digest}}}]}
     (directory / "repository.json").write_text(json.dumps(index, indent=2) + "\n")
+    subprocess.run([helper, str((directory / "repository.json").resolve())], check=True)
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     names = [binary.name, "manifest.json", "repository.json"]
     (directory / "SHA256SUMS").write_text("".join(

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Fix repository manifests to use Silo's numeric form-control enum format.
+- Validate each release index using Silo's protobuf types and JSON decoder.
+- Use this release for repository installation; 0.3.0's binary works but its
+  catalog index cannot be read by Silo.
+
 ## 0.3.0
 
 - Standalone Silo plugin repository hosted in GitHub release assets.
