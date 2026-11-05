@@ -14,6 +14,9 @@ type catalogLoad struct {
 }
 
 func waitContext(ctx context.Context, delay time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {

@@ -20,7 +20,7 @@ import (
 //go:embed manifest.json
 var manifest []byte
 
-const version = "0.2.4"
+const version = "0.2.5"
 
 type pluginServer struct {
 	v1.UnimplementedHttpRoutesServer

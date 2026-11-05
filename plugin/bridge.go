@@ -84,6 +84,9 @@ type poster struct {
 	mime string
 }
 type Bridge struct {
+	metadataGate   chan struct{}
+	metadataNext   time.Time
+	imageFlights   map[string]*imageLoad
 	catalogFlight  *catalogLoad
 	catalogRetryAt time.Time
 	catalogError   error
@@ -103,7 +106,7 @@ type Bridge struct {
 }
 
 func newBridge(c Config) *Bridge {
-	return &Bridge{cfg: c, http: &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rows: map[string]cachedRows{}, reasons: map[string]pendingReason{}, posters: map[string]*poster{}}
+	return &Bridge{metadataGate: make(chan struct{}, 1), imageFlights: map[string]*imageLoad{}, cfg: c, http: &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rows: map[string]cachedRows{}, reasons: map[string]pendingReason{}, posters: map[string]*poster{}}
 }
 func newHTTPServer(c Config) *http.Server {
 	return &http.Server{Addr: c.Listen, Handler: newBridge(c), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
@@ -135,17 +138,24 @@ func (b *Bridge) native(ctx context.Context, method, path string, q url.Values, 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	metadataRead := method == "GET" && (path == "/admin/catalog/items" || path == "/profiles" || strings.HasPrefix(path, "/catalog/items/"))
+	if metadataRead && b.metadataSlot(ctx) != nil {
+		return nil, fail(503, "metadata lookup timed out; retry shortly")
+	}
 	resp, e := b.http.Do(req)
 	if e != nil {
 		return nil, fail(502, "Silo connection failed")
 	}
-	// Only retry read-only catalog pages. Stream termination is never replayed.
-	for attempt := 0; method == "GET" && path == "/admin/catalog/items" && resp.StatusCode == 429 && attempt < 3; attempt++ {
+	// Only retry read-only metadata. Stream termination is never replayed.
+	for attempt := 0; metadataRead && resp.StatusCode == 429 && attempt < 3; attempt++ {
 		delay := retryDelay(resp.Header.Get("Retry-After"), time.Now(), attempt)
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 8192))
 		resp.Body.Close()
 		if delay > 10*time.Minute || waitContext(ctx, delay) != nil {
-			return nil, fail(503, "Silo catalog is rate limited; retry later")
+			return nil, fail(503, "Silo metadata is rate limited; retry later")
+		}
+		if b.metadataSlot(ctx) != nil {
+			return nil, fail(503, "metadata lookup timed out; retry shortly")
 		}
 		resp, e = b.http.Do(req.Clone(ctx))
 		if e != nil {
@@ -187,11 +197,6 @@ func (b *Bridge) collection(ctx context.Context, path string, paginated bool) ([
 	rows := []object{}
 	seen := map[string]bool{}
 	for {
-		if path == "/admin/catalog/items" && len(rows) > 0 {
-			if waitContext(ctx, 100*time.Millisecond) != nil {
-				return nil, fail(503, "catalog scan timed out")
-			}
-		}
 		result, e := b.native(ctx, "GET", path, q, nil, false)
 		if e != nil {
 			return nil, e
@@ -700,7 +705,7 @@ func (b *Bridge) registerPoster(id, reference string) string {
 	}
 	return tag
 }
-func (b *Bridge) image(ctx context.Context, path, tag string) (*poster, error) {
+func (b *Bridge) loadImage(ctx context.Context, path, tag string) (*poster, error) {
 	id := imageRoute.FindStringSubmatch(path)[1]
 	find := func() *poster {
 		b.mu.Lock()

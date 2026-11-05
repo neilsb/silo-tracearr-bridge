@@ -116,6 +116,26 @@ Cached queries reported **1,369 movies** and **415 shows** in approximately
 0.01 seconds each. Session polling remained healthy. Tests cover shared scans,
 caller cancellation, 429 retries, incomplete-page failure, and retry timing.
 
+## Poster burst handling in 0.2.5
+
+Concurrent library browsing exposed a second rate-limit path: individual
+catalog-detail requests for posters. In a 36-title live sample with eight
+concurrent callers, 17 requests received Silo HTTP 429, 18 posters loaded, and
+one title had no supported artwork.
+
+Profile listing, catalog pagination, and artwork metadata now share a paced
+budget of at most eight request starts per second. Rate-limited metadata reads
+honor `Retry-After`, using the same bounded retry rules as catalog scans.
+Concurrent requests for the same item/image tag share one image lookup and
+download. Session monitoring and termination do not wait on this metadata gate.
+
+After deployment, the same sample returned 35 posters and the one missing
+artwork result, with no rate-limit failures; the slowest request took 2.02
+seconds. Tracearr's tested image proxy caches degraded placeholders for 15
+seconds and can also return a placeholder after two seconds while it finishes
+warming an image in the background. Initial cold loads may therefore still
+show temporary placeholders; artwork genuinely absent in Silo stays missing.
+
 ## Build
 
 From the repository root, with Docker on Linux amd64:

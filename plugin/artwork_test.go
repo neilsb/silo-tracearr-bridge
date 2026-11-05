@@ -5,10 +5,71 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestConcurrentArtworkSharesRateLimitedLookup(t *testing.T) {
+	var metadata, images atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/profiles":
+			respond(w, 200, object{"items": []object{{"id": "parent", "is_primary": true}}})
+		case "/api/v2/catalog/items/movie":
+			if metadata.Add(1) == 1 {
+				w.Header().Set("Retry-After", "0")
+				w.WriteHeader(429)
+				return
+			}
+			respond(w, 200, object{"type": "movie", "poster_url": "/api/v2/artwork/movie"})
+		case "/api/v2/artwork/movie":
+			images.Add(1)
+			w.Header().Set("Content-Type", "image/webp")
+			w.Write([]byte("poster"))
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer upstream.Close()
+	b := newBridge(Config{SiloURL: upstream.URL})
+	var group sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			image, err := b.image(context.Background(), "/Items/"+rid("item", "movie")+"/Images/Primary", "")
+			if err != nil || string(image.data) != "poster" {
+				t.Errorf("poster lookup failed: %v", err)
+			}
+		}()
+	}
+	group.Wait()
+	if metadata.Load() != 2 || images.Load() != 1 {
+		t.Fatalf("duplicate lookups: metadata=%d images=%d", metadata.Load(), images.Load())
+	}
+}
+
+func TestMetadataPacingAndCancelledWait(t *testing.T) {
+	b := newBridge(Config{})
+	start := time.Now()
+	if err := b.metadataSlot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := b.metadataSlot(ctx); err == nil {
+		t.Fatal("cancelled wait succeeded")
+	}
+	if err := b.metadataSlot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatal("metadata requests were not paced")
+	}
+}
 
 func TestLibraryArtworkWithoutPlaybackAndAfterRestart(t *testing.T) {
 	var details, images atomic.Int32
