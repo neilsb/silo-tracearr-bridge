@@ -11,11 +11,22 @@ import (
 	"time"
 
 	v1 "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginproto/silo/plugin/v1"
+	publicmanifest "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginsdk/manifest"
 	sdk "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginsdk/runtime"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+func TestManifestPassesHostValidation(t *testing.T) {
+	m, err := publicmanifest.LoadWithChecksum(manifest, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publicmanifest.Validate(m); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestPluginProcessLifecycle(t *testing.T) {
 	// Use the actual executable and go-plugin handshake, not a mocked Runtime.

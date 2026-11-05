@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "checksum": "__CHECKSUM__",
   "silo_api_version": "v1",
+  "supported_platforms": [{"os": "linux", "arch": "amd64"}],
   "category": "Monitoring",
   "presentation": {
     "display_name": "Tracearr Bridge",
