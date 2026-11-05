@@ -16,9 +16,11 @@ On 2026-11-05 the host's LAN listener on port 8098 was externally reachable.
 Liveness, readiness, Jellyfin admin verification, session listing, and discovery
 of all three configured libraries returned HTTP 200. The plugin reported the
 same Silo server ID as the Python bridge. No sessions were active at that check.
-The remaining deployment step is updating the existing Tracearr server URL and
-verifying playback through it. The Python bridge on 8097 remains available
-until migration is confirmed.
+The user subsequently confirmed live playback monitoring through Tracearr,
+successful stream termination, and automatic plugin startup after restarting
+Silo. Migration is complete. The old Python Compose service is stopped; its
+configuration remains available as a fallback on port 8097. To restart it, run
+`docker compose start silo-tracearr-bridge` from the repository root.
 
 ## Build
 
@@ -103,7 +105,7 @@ does not pretend to be a network provider.
 
 When testing cold-start behavior, check port 8098 **before** invoking `/status`;
 otherwise that request could hide a startup-task problem. External reachability
-is verified; a controlled Silo cold-start test remains to be performed.
+is verified, and the user confirmed automatic startup after restarting Silo.
 
 ## Administrator helper
 

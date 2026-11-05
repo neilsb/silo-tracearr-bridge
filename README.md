@@ -7,9 +7,9 @@ dependencies. This is an independent integration, not an official Silo plugin.
 **Native plugin prototype:** the [Go plugin implementation](plugin/README.md)
 can now run inside Silo and has been installed and checked on the live server.
 Its separate listener uses port 8098 and is verified reachable on the Silo
-host's LAN address. Updating the existing Tracearr server URL and verifying
-playback are the remaining migration steps; the Python service documented
-below remains available on port 8097.
+host's LAN address. Live playback monitoring, stream termination, and automatic
+startup after a Silo restart are confirmed. The old Python Compose service is
+stopped; its configuration remains available as a fallback on port 8097.
 
 ## What works
 
