@@ -1,5 +1,12 @@
 # Native Silo plugin
 
+Version 0.3.2 corrects TV session classification: Silo can report `series` for
+an episode, which must be presented to Tracearr as `Episode`. Active session
+metadata is enriched with year and series identity using a targeted catalog
+lookup, cached for five minutes and bounded to two seconds. Lookup failures
+retain the session and retry metadata after 15 seconds. This affects newly
+observed playback; previously stored Tracearr history is not rewritten.
+
 For installation through the standalone plugin repository, see
 [releases and updates](../RELEASING.md). Version 0.3.0 adds an admin navigation
 entry named **Tracearr Bridge** with listener health, session checks, catalog

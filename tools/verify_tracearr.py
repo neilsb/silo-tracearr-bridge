@@ -53,6 +53,8 @@ assert.equal(sessions[2].quality.videoDecision, 'copy');
 assert.equal(sessions[2].quality.audioDecision, 'transcode');
 assert.equal(sessions[3].quality.isTranscode, false);
 if (input.richPlayback) {
+  assert.equal(sessions[0].media.type, 'episode');
+  assert.equal(sessions[0].episode.showTitle, 'Test Show');
   assert.equal(sessions[1].quality.videoWidth, 3840);
   assert.equal(sessions[1].quality.videoHeight, 1600);
   assert.equal(sessions[1].quality.streamVideoDetails.width, 1920);
@@ -93,6 +95,7 @@ console.log('Tracearr parser contract passed: direct play, video/audio transcode
                 fixture.setUp()
                 fixture.native.sessions = [dict(SESSION, session_id=f"session-{index}", effective_play_method=method,
                                                 transcode_audio=method in ("transcode", "direct_stream"),
+                                                media_type="series", series_name="Test Show",
                                                 source_video_resolution="3840x1600", source_video_height=1600,
                                                 source_audio_layout="5.1", target_resolution="1920x800",
                                                 transcode_hw_accel="qsv",

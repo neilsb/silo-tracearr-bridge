@@ -2,6 +2,23 @@ package main
 
 import "testing"
 
+func TestNativeSeriesSessionIsAnEpisode(t *testing.T) {
+	for _, season := range []int{0, 3} {
+		row := object{"session_id": "s", "user_id": "u", "media_file_id": "f", "position_seconds": 0,
+			"is_paused": false, "updated_at": "now", "effective_play_method": "direct",
+			"media_type": "series", "media_title": "Grimsburg", "series_name": "Grimsburg",
+			"episode_name": "CrimeShare", "season_number": season, "episode_number": 5, "year": 2024, "series_id": "series-1"}
+		session, err := mapSession(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item := obj(session["NowPlayingItem"])
+		if item["Type"] != "Episode" || item["SeriesName"] != "Grimsburg" || item["Name"] != "CrimeShare" || item["ParentIndexNumber"] != season || item["IndexNumber"] != 5 || item["ProductionYear"] != 2024 || item["SeriesId"] != rid("item", "series-1") {
+			t.Fatalf("incorrect episode: %v", item)
+		}
+	}
+}
+
 func TestPlaybackDetailsDoNotInventSourceOrHardware(t *testing.T) {
 	row := object{"session_id": "s", "user_id": "u", "media_file_id": "f", "position_seconds": 0,
 		"is_paused": false, "updated_at": "now", "effective_play_method": "transcode",

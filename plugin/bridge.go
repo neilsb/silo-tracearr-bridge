@@ -84,6 +84,7 @@ type poster struct {
 	mime string
 }
 type Bridge struct {
+	sessionMetadata map[string]cachedRows
 	artworkRequests int
 	artworkFailures int
 	artworkError    string
@@ -410,6 +411,7 @@ func (b *Bridge) sessions(ctx context.Context) (result []object, err error) {
 		return nil, e
 	}
 	mapped := []object{}
+	b.enrichSessionMetadata(ctx, rows)
 	for _, row := range rows {
 		s, e := mapSession(row)
 		if e != nil {

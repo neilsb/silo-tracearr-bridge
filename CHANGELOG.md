@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+- Recognize TV episode playback when Silo reports the parent type `series`,
+  preserving episode titles, series names, and season/episode numbers (including
+  season-zero specials).
+- Enrich active sessions with year and series identity from targeted, cached
+  catalog lookups. Metadata lookup failures never hide active playback.
+- Existing history records already stored by Tracearr are not rewritten.
+
 ## 0.3.1
 
 - Fix repository manifests to use Silo's numeric form-control enum format.

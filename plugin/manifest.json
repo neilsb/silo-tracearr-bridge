@@ -1,6 +1,6 @@
 {
   "plugin_id": "community.tracearr-bridge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "checksum": "__CHECKSUM__",
   "silo_api_version": "v1",
   "supported_platforms": [{"os": "linux", "arch": "amd64"}],

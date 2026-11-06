@@ -164,11 +164,22 @@ func mapSession(r object) (object, error) {
 	if kind == "" {
 		kind = str(r["media_type"])
 	}
+	// Native Silo sessions use the parent media item's type for TV playback.
+	// Episode coordinates identify the playable episode, including season zero.
+	if strings.EqualFold(kind, "series") && r["season_number"] != nil && r["episode_number"] != nil {
+		kind = "Episode"
+	}
 	sourceBitrate := r["source_bitrate_kbps"]
 	if method == "direct" {
 		sourceBitrate = first(sourceBitrate, r["stream_bitrate_kbps"])
 	}
 	item := clean(object{"Id": itemID, "Name": first(r["episode_name"], r["media_title"]), "Type": kind, "SeriesName": r["series_name"], "ParentIndexNumber": r["season_number"], "IndexNumber": r["episode_number"], "MediaStreams": streams, "MediaSources": []object{clean(object{"Id": fileID, "MediaStreams": streams, "Bitrate": bitrate(sourceBitrate), "Container": r["source_container"]})}})
+	if num(r["year"]) > 0 {
+		item["ProductionYear"] = r["year"]
+	}
+	if str(r["series_id"]) != "" {
+		item["SeriesId"] = rid("item", r["series_id"])
+	}
 	if r["file_duration"] != nil {
 		item["RunTimeTicks"] = math.Round(num(r["file_duration"]) * 10000000)
 	}
